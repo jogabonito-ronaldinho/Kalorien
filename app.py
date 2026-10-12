@@ -15,6 +15,9 @@ def lade_daten():
     if os.path.exists(DATA_FILE):
         try:
             df = pd.read_csv(DATA_FILE)
+            # Sicherstellen, dass ID als Spalte existiert, falls alte Daten geladen werden
+            if "ID" not in df.columns:
+                df["ID"] = [f"old_{i}" for i in range(len(df))]
             return df.to_dict(orient="records")
         except Exception:
             return []
@@ -48,7 +51,7 @@ def search_or_estimate_nutrition(query_text, portion_size):
                 nutriments = p.get("nutriments", {})
                 kcal_100 = nutriments.get("energy-kcal_100g")
                 if kcal_100 and kcal_100 > 0:
-                    base_g = 350 * factor  # Standard-Portionsgröße ca. 350g
+                    base_g = 350 * factor
                     return {
                         "kcal": int(kcal_100 * (base_g / 100)),
                         "protein": int(nutriments.get("proteins_100g", 15) * (base_g / 100)),
@@ -58,8 +61,8 @@ def search_or_estimate_nutrition(query_text, portion_size):
     except Exception:
         pass
     
-    # 2. Intelligente Keyword-Schätzung falls API nichts liefert
-    base_kcal, prot, carbs, fett = 550, 30, 55, 18  # Standard
+    # 2. Intelligente Keyword-Schätzung
+    base_kcal, prot, carbs, fett = 550, 30, 55, 18
     
     if any(k in q for k in ["salat", "gemüse", "suppe", "obst"]):
         base_kcal, prot, carbs, fett = 320, 15, 30, 12
@@ -129,7 +132,14 @@ st.divider()
 st.subheader("📊 Heutiger Fortschritt")
 
 heute_str = str(date.today())
-df_all = pd.DataFrame(st.session_state.eintraege) if st.session_state.eintraege else pd.DataFrame(columns=["ID", "Datum", "Timestamp", "Person", "Gericht", "kcal", "protein", "carbs", "fett"])
+
+# Sicherstellen, dass Daten verarbeitet werden können
+if st.session_state.eintraege:
+    df_all = pd.DataFrame(st.session_state.eintraege)
+    if "ID" not in df_all.columns:
+        df_all["ID"] = [f"item_{i}" for i in range(len(df_all))]
+else:
+    df_all = pd.DataFrame(columns=["ID", "Datum", "Timestamp", "Person", "Gericht", "kcal", "protein", "carbs", "fett"])
 
 df_heute = df_all[df_all["Datum"] == heute_str] if not df_all.empty and "Datum" in df_all.columns else pd.DataFrame()
 
@@ -164,13 +174,16 @@ if not df_heute.empty:
     st.markdown("---")
     st.markdown("### 📋 Heutige Einträge bearbeiten / löschen")
     
-    for index, row in df_heute.iterrows():
+    for idx, row in df_heute.iterrows():
+        entry_id = row.get("ID", f"idx_{idx}")
+        ts = row.get("Timestamp", "Heute")
         cols = st.columns([3, 1])
         with cols[0]:
-            st.text(f"[{row['Timestamp']}] {row['Person']} - {row['Gericht']}: {row['kcal']} kcal (P:{row['protein']}g, C:{row['carbs']}g, F:{row['fett']}g)")
+            st.text(f"[{ts}] {row['Person']} - {row['Gericht']}: {row['kcal']} kcal (P:{row['protein']}g, C:{row['carbs']}g, F:{row['fett']}g)")
         with cols[1]:
-            if st.button("🗑️ Löschen", key=f"del_{row['ID']}"):
-                st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != str(row['ID'])]
+            if st.button("🗑️ Löschen", key=f"del_{entry_id}_{idx}"):
+                # Sicheres Entfernen nach ID oder Index
+                st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != str(entry_id)]
                 speichere_daten(st.session_state.eintraege)
                 st.rerun()
 
@@ -196,14 +209,4 @@ if not df_all.empty:
         
     elif report_typ == "Monate":
         df_all["Monat"] = df_all["Datum_dt"].dt.strftime('%Y-%m')
-        monat_agg = df_all.groupby(["Monat", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
-        monat_agg[["kcal", "protein", "carbs", "fett"]] = monat_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        st.dataframe(monat_agg, use_container_width=True)
-        
-    elif report_typ == "Jahre":
-        df_all["Jahr"] = df_all["Datum_dt"].dt.strftime('%Y')
-        jahr_agg = df_all.groupby(["Jahr", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
-        jahr_agg[["kcal", "protein", "carbs", "fett"]] = jahr_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        st.dataframe(jahr_agg, use_container_width=True)
-else:
-    st.info("Bisher sind noch keine Historiedaten vorhanden.")
+        monat_agg = df
