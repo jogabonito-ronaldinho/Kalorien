@@ -1,95 +1,179 @@
 import streamlit as st
 import pandas as pd
+import requests
 from datetime import date
 
-# Titel der App
-st.set_page_config(page_title="Unser Kalorien-Tracker", page_icon="🍽️", layout="centered")
+st.set_page_config(page_title="Mabe & Richi Tracker", page_icon="🥗", layout="centered")
 
-st.title("🍽️ Gemeinsamer Kalorien-Tracker")
-st.markdown("Ziel: **1.900 kcal** | Fokus: Proteinreich & fit bleiben 🍏")
+st.title("🥗 Mabe & Richi's Kalorien- & Makro-Tracker")
 
-# Einfache Session-State-Speicherung (für den Prototypen / die Session)
+# --- BENUTZER-ZIELE DEFINIEREN ---
+USER_GOALS = {
+    "Mabe": {
+        "bedarf_kcal": 2400,
+        "ziel_kcal": 1900,
+        "protein": 150,
+        "fett": 55,
+        "carbs": 200
+    },
+    "Richi": {
+        "bedarf_kcal": 2200,
+        "ziel_kcal": 2200,
+        "protein": 150,
+        "fett": 70,
+        "carbs": 240
+    }
+}
+
+PORTION_FACTORS = {
+    "Klein": 0.7,
+    "Mittel": 1.0,
+    "Groß": 1.4
+}
+
+# --- DATENSPEICHER ---
 if "eintraege" not in st.session_state:
     st.session_state.eintraege = []
 
-# --- EINGABE-BEREICH ---
-with st.form("kalorien_form", clear_on_submit=True):
-    st.subheader("Neues Gericht / Mahlzeit eintragen")
+# --- SCHÄTZ- / SUCH-FUNKTION (OPEN FOOD FACTS & FALLBACK) ---
+def search_or_estimate_nutrition(query_text, portion_size):
+    factor = PORTION_FACTORS.get(portion_size, 1.0)
     
-    col1, col2 = st.columns(2)
+    # 1. Versuch: Open Food Facts API Abfrage
+    try:
+        url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={query_text}&search_simple=1&action=process&json=1"
+        res = requests.get(url, timeout=3).json()
+        if res.get("products") and len(res["products"]) > 0:
+            p = res["products"][0]
+            nutriments = p.get("nutriments", {})
+            
+            # Basiswerte pro 100g/Portion hochrechnen (ca. 350g Standard-Mahlzeit)
+            base_g = 3.5 * factor
+            kcal = nutriments.get("energy-kcal_100g", 150) * base_g
+            protein = nutriments.get("proteins_100g", 12) * base_g
+            carbs = nutriments.get("carbohydrates_100g", 18) * base_g
+            fett = nutriments.get("fat_100g", 5) * base_g
+            
+            return {
+                "kcal": int(kcal),
+                "protein": int(protein),
+                "carbs": int(carbs),
+                "fett": int(fett)
+            }
+    except Exception:
+        pass
+
+    # 2. Fallback: Plausible Standard-Schätzung für Mahlzeiten
+    base_kcal = 500 * factor
+    return {
+        "kcal": int(base_kcal),
+        "protein": int(25 * factor),
+        "carbs": int(50 * factor),
+        "fett": int(18 * factor)
+    }
+
+# --- EINGABEBEREICH ---
+st.subheader("📝 Mahlzeit eintragen")
+
+person = st.radio("Wer isst?", ["Mabe", "Richi"], horizontal=True)
+eingabe_art = st.radio("Wie möchtest du eintragen?", ["Suche / Name des Gerichts", "Foto vom Gericht machen"], horizontal=True)
+
+gericht_name = ""
+portion = "Mittel"
+estimated_values = None
+
+if eingabe_art == "Suche / Name des Gerichts":
+    col1, col2 = st.columns([2, 1])
     with col1:
-        person = st.selectbox("Wer isst?", ["Du", "Deine Frau"])
+        gericht_name = st.text_input("Name des Gerichts (z.B. Spaghetti Bolognese, Lachs mit Reis)")
     with col2:
-        mahlzeit_typ = st.selectbox("Mahlzeit", ["Frühstück", "Mittagessen", "Abendessen", "Snack"])
-        
-    gericht_name = st.text_input("Name des Gerichts (z.B. Hähnchen mit Reis)")
-    
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        kalorien_gesamt = st.number_input("Gesamt-Kalorien (kcal)", min_value=0, value=600, step=10)
-    with c2:
-        gramm_gesamt = st.number_input("Gesamtgewicht gekocht (g)", min_value=1, value=500, step=10)
-    with c3:
-        gramm_portion = st.number_input("Deine gegessene Menge (g)", min_value=1, value=300, step=10)
+        portion = st.selectbox("Portion", ["Klein", "Mittel", "Groß"], index=1)
 
-    submitted = st.form_submit_button("Portion berechnen & eintragen")
-    
-    if submitted and gericht_name:
-        # Berechnung der individuellen Portions-Kalorien
-        portion_kcal = (kalorien_gesamt / gramm_gesamt) * gramm_portion
+else:
+    uploaded_file = st.camera_input("Foto von der Mahlzeit aufnehmen")
+    if uploaded_file is None:
+        uploaded_file = st.file_uploader("Oder Foto aus Mediathek hochladen", type=["jpg", "png", "jpeg"])
         
-        neuer_eintrag = {
-            "Datum": str(date.today()),
-            "Person": person,
-            "Mahlzeit": mahlzeit_typ,
-            "Gericht": gericht_name,
-            "Gegessen (g)": gramm_portion,
-            "Kalorien (kcal)": int(portion_kcal)
-        }
-        st.session_state.eintraege.append(neuer_eintrag)
-        st.success(f"Eintrag für {person} gespeichert: **{int(portion_kcal)} kcal**!")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        gericht_name_input = st.text_input("Optionales Stichwort zum Foto (z.B. Salat mit Pute)")
+        gericht_name = gericht_name_input if gericht_name_input else "Fotografierte Mahlzeit"
+    with col2:
+        portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1)
 
-# --- TÄGLICHE ÜBERSICHT ---
+if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
+    if gericht_name:
+        with st.spinner("Nährwerte werden recherchiert..."):
+            vals = search_or_estimate_nutrition(gericht_name, portion)
+            
+            eintrag = {
+                "Datum": str(date.today()),
+                "Person": person,
+                "Gericht": f"{gericht_name} ({portion})",
+                "kcal": vals["kcal"],
+                "protein": vals["protein"],
+                "carbs": vals["carbs"],
+                "fett": vals["fett"]
+            }
+            st.session_state.eintraege.append(eintrag)
+            st.success(f"Erfolgreich für {person} eingetragen: {vals['kcal']} kcal | {vals['protein']}g Eiweiß | {vals['carbs']}g Carbs | {vals['fett']}g Fett")
+    else:
+        st.warning("Bitte gib einen Namen oder ein Stichwort für das Gericht ein.")
+
+# --- TÄGLICHE ÜBERSICHT & DASHBOARD ---
 st.divider()
-st.subheader("📊 Heutige Übersicht")
+st.subheader("📊 Heutiger Fortschritt")
 
+heute = str(date.today())
 if st.session_state.eintraege:
     df = pd.DataFrame(st.session_state.eintraege)
-    
-    # Filter für das heutige Datum
-    heute_str = str(date.today())
-    df_heute = df[df["Datum"] == heute_str]
-    
-    if not df_heute.empty:
-        # Summen pro Person berechnen
-        zusammenfassung = df_heute.groupby("Person")["Kalorien (kcal)"].sum().reset_index()
-        
-        col_du, col_frau = st.columns(2)
-        
-        # Du
-        kalorien_du = zusammenfassung.loc[zusammenfassung["Person"] == "Du", "Kalorien (kcal)"]
-        sum_du = int(kalorien_du.values[0]) if not kalorien_du.empty else 0
-        rest_du = 1900 - sum_du
-        
-        with col_du:
-            st.metric(label="Dein Stand (Du)", value=f"{sum_du} kcal", delta=f"Noch {rest_du} kcal bis 1.900")
-            st.progress(min(sum_du / 1900, 1.0))
-            
-        # Deine Frau (Beispielhaftes Ziel 1.700 oder anpassbar)
-        kalorien_frau = zusammenfassung.loc[zusammenfassung["Person"] == "Deine Frau", "Kalorien (kcal)"]
-        sum_frau = int(kalorien_frau.values[0]) if not kalorien_frau.empty else 0
-        
-        with col_frau:
-            st.metric(label="Stand (Deine Frau)", value=f"{sum_frau} kcal")
-            st.progress(min(sum_frau / 1800, 1.0))
-
-        st.markdown("### Alle heutigen Einträge:")
-        st.dataframe(df_heute[["Person", "Mahlzeit", "Gericht", "Gegessen (g)", "Kalorien (kcal)"]], use_container_width=True)
-        
-        if st.button("Heutigen Verlauf zurücksetzen"):
-            st.session_state.eintraege = [e for e in st.session_state.eintraege if e["Datum"] != heute_str]
-            st.rerun()
-    else:
-        st.info("Heute wurden noch keine Kalorien eingetragen.")
+    df_heute = df[df["Datum"] == heute]
 else:
-    st.info("Bisher noch keine Einträge vorhanden. Trag oben deine erste Mahlzeit ein!")
+    df_heute = pd.DataFrame()
+
+# Anzeige für Mabe und Richi nebeneinander
+col_mabe, col_richi = st.columns(2)
+
+for idx, current_user in enumerate(["Mabe", "Richi"]):
+    target_col = col_mabe if current_user == "Mabe" else col_richi
+    goals = USER_GOALS[current_user]
+    
+    with target_col:
+        st.markdown(f"### 👤 {current_user}")
+        if current_user == "Mabe":
+            st.caption("Ziel: Abnehmen (1.900 kcal)")
+        else:
+            st.caption("Ziel: Gewicht halten (2.200 kcal)")
+
+        if not df_heute.empty and current_user in df_heute["Person"].values:
+            u_df = df_heute[df_heute["Person"] == current_user]
+            curr_kcal = int(u_df["kcal"].sum())
+            curr_prot = int(u_df["protein"].sum())
+            curr_carbs = int(u_df["carbs"].sum())
+            curr_fett = int(u_df["fett"].sum())
+        else:
+            curr_kcal = curr_prot = curr_carbs = curr_fett = 0
+
+        # Kalorien
+        st.write(f"**Kalorien:** {curr_kcal} / {goals['ziel_kcal']} kcal")
+        st.progress(min(curr_kcal / goals["ziel_kcal"], 1.0))
+        
+        # Eiweiß
+        st.write(f"**Eiweiß:** {curr_prot}g / {goals['protein']}g")
+        st.progress(min(curr_prot / goals["protein"], 1.0))
+
+        # Kohlenhydrate
+        st.write(f"**Carbs:** {curr_carbs}g / {goals['carbs']}g")
+        st.progress(min(curr_carbs / goals["carbs"], 1.0))
+
+        # Fett
+        st.write(f"**Fett:** {curr_fett}g / {goals['fett']}g")
+        st.progress(min(curr_fett / goals["fett"], 1.0))
+
+if not df_heute.empty:
+    st.markdown("---")
+    st.markdown("### 📋 Heutige Mahlzeiten")
+    st.dataframe(df_heute[["Person", "Gericht", "kcal", "protein", "carbs", "fett"]], use_container_width=True)
+    if st.button("Tag zurücksetzen"):
+        st.session_state.eintraege = [e for e in st.session_state.eintraege if e["Datum"] != heute]
+        st.rerun()
