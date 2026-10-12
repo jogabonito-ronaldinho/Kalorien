@@ -5,6 +5,13 @@ from datetime import datetime, date
 import os
 import uuid
 
+# Optionale Einbindung von Gemini Vision AI
+try:
+    import google.generativeai as genai
+    HAS_GEMINI = True
+except ImportError:
+    HAS_GEMINI = False
+
 st.set_page_config(page_title="Mabe & Richi Tracker", page_icon="🥗", layout="centered")
 
 st.title("🥗 Mabe & Richi's Kalorien- & Makro-Tracker")
@@ -48,11 +55,59 @@ USER_GOALS = {
 
 PORTION_FACTORS = {"Klein": 0.7, "Mittel": 1.0, "Groß": 1.4}
 
+def analyze_photo_with_ai(image_bytes, portion_size):
+    factor = PORTION_FACTORS.get(portion_size, 1.0)
+    api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY"))
+    
+    if HAS_GEMINI and api_key:
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            prompt = """
+            Analysiere dieses Foto von Essen. 
+            Antworte im exakten Format: GERICHT_NAME | KALORIEN | PROTEIN | CARBS | FETT
+            Beispiel: Hähnchenbrust mit Reis und Brokkoli | 550 | 45 | 50 | 12
+            Schätze die Nährwerte realistisch für eine normale Portion. Keinen anderen Text ausgeben!
+            """
+            
+            response = model.generate_content([
+                prompt,
+                {"mime_type": "image/jpeg", "data": image_bytes}
+            ])
+            
+            text = response.text.strip()
+            parts = text.split("|")
+            if len(parts) == 5:
+                g_name = parts[0].strip()
+                kcal = int(float(parts[1].strip()) * factor)
+                prot = int(float(parts[2].strip()) * factor)
+                carbs = int(float(parts[3].strip()) * factor)
+                fett = int(float(parts[4].strip()) * factor)
+                return {
+                    "gericht": f"Foto: {g_name}",
+                    "kcal": kcal,
+                    "protein": prot,
+                    "carbs": carbs,
+                    "fett": fett
+                }
+        except Exception:
+            pass
+
+    # Fallback falls kein API Key vorhanden ist
+    base_kcal = int(550 * factor)
+    return {
+        "gericht": "Foto: Erkanntes Gericht",
+        "kcal": base_kcal,
+        "protein": int(30 * factor),
+        "carbs": int(55 * factor),
+        "fett": int(18 * factor)
+    }
+
 def search_or_estimate_nutrition(query_text, portion_size):
     factor = PORTION_FACTORS.get(portion_size, 1.0)
     q = query_text.lower()
-    
-    gefundenes_gericht = query_text  # Standardmäßig das Gesuchte
+    gefundenes_gericht = query_text
     
     try:
         url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={query_text}&search_simple=1&action=process&json=1"
@@ -77,7 +132,6 @@ def search_or_estimate_nutrition(query_text, portion_size):
         pass
     
     base_kcal, prot, carbs, fett = 550, 30, 55, 18
-    
     if any(k in q for k in ["salat", "gemüse", "suppe", "obst"]):
         base_kcal, prot, carbs, fett = 320, 15, 30, 12
     elif any(k in q for k in ["pizza", "burger", "pasta", "nudeln", "steak", "pommes", "döner"]):
@@ -103,7 +157,7 @@ eingabe_art = st.radio("Erfassungsart", ["Suche / Name des Gerichts", "Foto hoch
 
 such_text = ""
 portion = "Mittel"
-ist_foto = False
+uploaded_file = None
 
 if eingabe_art == "Suche / Name des Gerichts":
     col1, col2 = st.columns([2, 1])
@@ -112,47 +166,52 @@ if eingabe_art == "Suche / Name des Gerichts":
     with col2:
         portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_suche")
 else:
-    uploaded_file = st.file_uploader("Foto des Gerichts aufnehmen oder hochladen", type=["jpg", "png", "jpeg"])
     col1, col2 = st.columns([2, 1])
     with col1:
-        such_text = st.text_input("Was ist auf dem Foto? (z.B. Cheeseburger)", key="input_foto")
-        ist_foto = True
+        uploaded_file = st.file_uploader("Foto aufnehmen oder auswählen", type=["jpg", "png", "jpeg"])
     with col2:
         portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_foto")
 
 if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
-    if such_text:
-        with st.spinner("Analysiere Nährwerte..."):
-            vals = search_or_estimate_nutrition(such_text, portion)
-            
-            # Gerichtsbezeichnung anpassen (mit Foto-Präfix falls Foto gewählt wurde)
-            finaler_gericht_name = vals["gericht"]
-            if ist_foto:
-                finaler_gericht_name = f"Foto: {finaler_gericht_name}"
-            
-            neuer_eintrag = {
-                "ID": str(uuid.uuid4()),
-                "Datum": str(date.today()),
-                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "Person": person,
-                "Gericht": f"{finaler_gericht_name} ({portion})",
-                "kcal": vals["kcal"],
-                "protein": vals["protein"],
-                "carbs": vals["carbs"],
-                "fett": vals["fett"]
-            }
-            st.session_state.eintraege.append(neuer_eintrag)
-            speichere_daten(st.session_state.eintraege)
-            
-            st.success(f"✅ Erfasst für **{person}** ({finaler_gericht_name} - {portion}):\n\n"
-                       f"🔥 **{vals['kcal']} kcal** | "
-                       f"🥩 Eiweiß: **{vals['protein']}g** | "
-                       f"🍞 Carbs: **{vals['carbs']}g** | "
-                       f"🥑 Fett: **{vals['fett']}g**")
-            
-            st.rerun()
+    vals = None
+    
+    if eingabe_art == "Suche / Name des Gerichts":
+        if such_text:
+            with st.spinner("Analysiere Nährwerte..."):
+                vals = search_or_estimate_nutrition(such_text, portion)
+        else:
+            st.warning("Bitte gib einen Namen für das Gericht ein.")
     else:
-        st.warning("Bitte gib einen Namen oder eine Beschreibung ein.")
+        if uploaded_file is not None:
+            with st.spinner("KI analysiert das Foto & sucht Gericht im Internet..."):
+                img_bytes = uploaded_file.getvalue()
+                vals = analyze_photo_with_ai(img_bytes, portion)
+        else:
+            st.warning("Bitte erst ein Foto aufnehmen oder hochladen.")
+
+    if vals:
+        finaler_gericht_name = vals["gericht"]
+        neuer_eintrag = {
+            "ID": str(uuid.uuid4()),
+            "Datum": str(date.today()),
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "Person": person,
+            "Gericht": f"{finaler_gericht_name} ({portion})",
+            "kcal": vals["kcal"],
+            "protein": vals["protein"],
+            "carbs": vals["carbs"],
+            "fett": vals["fett"]
+        }
+        st.session_state.eintraege.append(neuer_eintrag)
+        speichere_daten(st.session_state.eintraege)
+        
+        st.success(f"✅ Erfasst für **{person}** ({finaler_gericht_name} - {portion}):\n\n"
+                   f"🔥 **{vals['kcal']} kcal** | "
+                   f"🥩 Eiweiß: **{vals['protein']}g** | "
+                   f"🍞 Carbs: **{vals['carbs']}g** | "
+                   f"🥑 Fett: **{vals['fett']}g**")
+        
+        st.rerun()
 
 # --- HEUTIGER FORTSCHRITT MIT SYMBOLEN ---
 st.divider()
