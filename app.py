@@ -100,14 +100,14 @@ portion = "Mittel"
 if eingabe_art == "Suche / Name des Gerichts":
     col1, col2 = st.columns([2, 1])
     with col1:
-        gericht_name = st.text_input("Name des Gerichts (z.B. Lachs mit Reis, Caesar Salad)")
+        gericht_name = st.text_input("Name des Gerichts (z.B. Lachs mit Reis, Caesar Salad)", key="input_gericht")
     with col2:
         portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_suche")
 else:
     uploaded_file = st.file_uploader("Foto des Gerichts aufnehmen oder hochladen", type=["jpg", "png", "jpeg"])
     col1, col2 = st.columns([2, 1])
     with col1:
-        foto_text = st.text_input("Was ist auf dem Foto? (z.B. Cheeseburger)")
+        foto_text = st.text_input("Was ist auf dem Foto? (z.B. Cheeseburger)", key="input_foto")
         gericht_name = foto_text if foto_text else "Gericht vom Foto"
     with col2:
         portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_foto")
@@ -134,12 +134,15 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             st.success(f"✅ Erfasst für **{person}** ({gericht_name} - {portion}):\n\n"
                        f"🔥 **{vals['kcal']} kcal** | "
                        f"🥩 Eiweiß: **{vals['protein']}g** | "
-                       f"🍞 Kohlenhydrate: **{vals['carbs']}g** | "
+                       f"🍞 Carbs: **{vals['carbs']}g** | "
                        f"🥑 Fett: **{vals['fett']}g**")
+            
+            # App kurz neu laden, damit das Eingabefeld geleert wird
+            st.rerun()
     else:
         st.warning("Bitte gib einen Namen oder eine Beschreibung ein.")
 
-# --- HEUTIGER FORTSCHRITT ---
+# --- HEUTIGER FORTSCHRITT MIT SYMBOLEN ---
 st.divider()
 st.subheader("📊 Heutiger Fortschritt")
 
@@ -169,19 +172,19 @@ for current_user in ["Mabe", "Richi"]:
         curr_carbs = int(df_heute[df_heute["Person"] == current_user]["carbs"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
         curr_fett = int(df_heute[df_heute["Person"] == current_user]["fett"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
 
-        st.write(f"**Kalorien:** {curr_kcal} / {goals['ziel_kcal']} kcal")
+        st.write(f"🔥 **Kalorien:** {curr_kcal} / {goals['ziel_kcal']} kcal")
         st.progress(min(curr_kcal / goals["ziel_kcal"], 1.0))
         
-        st.write(f"**Eiweiß:** {curr_prot}g / {goals['protein']}g")
+        st.write(f"🥩 **Eiweiß:** {curr_prot}g / {goals['protein']}g")
         st.progress(min(curr_prot / goals["protein"], 1.0))
 
-        st.write(f"**Carbs:** {curr_carbs}g / {goals['carbs']}g")
+        st.write(f"🍞 **Carbs:** {curr_carbs}g / {goals['carbs']}g")
         st.progress(min(curr_carbs / goals["carbs"], 1.0))
 
-        st.write(f"**Fett:** {curr_fett}g / {goals['fett']}g")
+        st.write(f"🥑 **Fett:** {curr_fett}g / {goals['fett']}g")
         st.progress(min(curr_fett / goals["fett"], 1.0))
 
-# --- REPORT / HISTORIE MIT SCHÖNER EINZELANZEIGE & PAPIERKORB ---
+# --- REPORT / HISTORIE MIT SAUBERER ZUORDNUNG & SYMBOLEN ---
 st.divider()
 st.subheader("📈 Historie & Berichte")
 
@@ -191,46 +194,53 @@ if not df_all.empty:
     df_all["Datum_dt"] = pd.to_datetime(df_all["Datum"])
     
     if report_typ == "Tage (Einzelansicht & Bearbeiten)":
-        st.caption("Alle erfassten Mahlzeiten übersichtlich dargestellt. Klicke rechts auf 🗑️, um einen Eintrag zu löschen:")
+        st.caption("Alle erfassten Mahlzeiten. Klicke auf 🗑️ direkt neben dem Eintrag zum Löschen:")
         
         for idx, row in df_all.sort_values(by="Timestamp", ascending=False).iterrows():
             e_id = str(row["ID"])
-            c1, c2 = st.columns([6, 1])
-            with c1:
-                # Schöne, einheitliche Darstellung mit den Symbolen wie bei der Erfolgsmeldung
+            
+            # Jedes Element in eine kompakte Zeile mit Text links und Papierkorb rechts
+            cols = st.columns([10, 1])
+            with cols[0]:
                 st.markdown(
-                    f"**📅 {row['Datum']} | 👤 {row['Person']}**<br>"
-                    f"🍽️ *{row['Gericht']}*<br>"
+                    f"**📅 {row['Datum']} | 👤 {row['Person']}** — *{row['Gericht']}*<br>"
                     f"🔥 **{int(row['kcal'])} kcal** | "
                     f"🥩 Eiweiß: **{int(row['protein'])}g** | "
                     f"🍞 Carbs: **{int(row['carbs'])}g** | "
                     f"🥑 Fett: **{int(row['fett'])}g**",
                     unsafe_allow_html=True
                 )
-                st.markdown("---")
-            with c2:
-                st.write("") # Kleiner Abstand für die vertikale Ausrichtung des Buttons
-                if st.button("🗑️", key=f"hist_del_{e_id}"):
+            with cols[1]:
+                # Button direkt auf Höhe des Eintrags platziert
+                if st.button("🗑️", key=f"hist_del_{e_id}", help="Eintrag löschen"):
                     st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != e_id]
                     speichere_daten(st.session_state.eintraege)
                     st.rerun()
+            st.divider()
 
     elif report_typ == "Wochen":
         df_all["Woche"] = df_all["Datum_dt"].dt.strftime('%Y-W%V')
         wochen_agg = df_all.groupby(["Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
         wochen_agg[["kcal", "protein", "carbs", "fett"]] = wochen_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
+        # Symbole in die Spaltennamen einbauen für die Auswertung
+        wochen_agg = wochen_agg.rename(columns={"kcal": "🔥 kcal", "protein": "🥩 Eiweiß (g)", "carbs": "🍞 Carbs (g)", "fett": "🥑 Fett (g)"})
+        st.caption("Durchschnittliche Tageswerte pro Kalenderwoche:")
         st.dataframe(wochen_agg, use_container_width=True)
         
     elif report_typ == "Monate":
         df_all["Monat"] = df_all["Datum_dt"].dt.strftime('%Y-%m')
         monat_agg = df_all.groupby(["Monat", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
         monat_agg[["kcal", "protein", "carbs", "fett"]] = monat_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
+        monat_agg = monat_agg.rename(columns={"kcal": "🔥 kcal", "protein": "🥩 Eiweiß (g)", "carbs": "🍞 Carbs (g)", "fett": "🥑 Fett (g)"})
+        st.caption("Durchschnittliche Tageswerte pro Monat:")
         st.dataframe(monat_agg, use_container_width=True)
         
     elif report_typ == "Jahre":
         df_all["Jahr"] = df_all["Datum_dt"].dt.strftime('%Y')
         jahr_agg = df_all.groupby(["Jahr", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
         jahr_agg[["kcal", "protein", "carbs", "fett"]] = jahr_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
+        jahr_agg = jahr_agg.rename(columns={"kcal": "🔥 kcal", "protein": "🥩 Eiweiß (g)", "carbs": "🍞 Carbs (g)", "fett": "🥑 Fett (g)"})
+        st.caption("Durchschnittliche Tageswerte pro Jahr:")
         st.dataframe(jahr_agg, use_container_width=True)
 else:
     st.info("Bisher sind noch keine Historiedaten vorhanden.")
