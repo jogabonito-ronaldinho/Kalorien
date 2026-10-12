@@ -18,10 +18,8 @@ def lade_daten():
             df = pd.read_csv(DATA_FILE)
             eintraege = df.to_dict(orient="records")
             for item in eintraege:
-                # IDs ergänzen, falls nicht vorhanden
                 if "ID" not in item or pd.isna(item["ID"]) or str(item["ID"]).strip() == "":
                     item["ID"] = str(uuid.uuid4())
-                # Fehlende Makros abfangen
                 if "protein" not in item or pd.isna(item["protein"]):
                     item["protein"] = 0
                 if "carbs" not in item or pd.isna(item["carbs"]):
@@ -132,8 +130,13 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             }
             st.session_state.eintraege.append(neuer_eintrag)
             speichere_daten(st.session_state.eintraege)
-            st.success(f"Eingetragen für {person}: {vals['kcal']} kcal | P: {vals['protein']}g | C: {vals['carbs']}g | F: {vals['fett']}g")
-            st.rerun()
+            
+            # Grüne Erfolgsanzeige mit allen ermittelten Nährwerten
+            st.success(f"✅ Erfasst für **{person}** ({gericht_name} - {portion}):\n\n"
+                       f"🔥 **{vals['kcal']} kcal** | "
+                       f"🥩 Eiweiß: **{vals['protein']}g** | "
+                       f"🍞 Kohlenhydrate: **{vals['carbs']}g** | "
+                       f"🥑 Fett: **{vals['fett']}g**")
     else:
         st.warning("Bitte gib einen Namen oder eine Beschreibung ein.")
 
@@ -145,7 +148,6 @@ heute_str = str(date.today())
 
 if st.session_state.eintraege:
     df_all = pd.DataFrame(st.session_state.eintraege)
-    # Sicherstellen, dass alle Spalten im DataFrame existieren
     for col in ["ID", "Datum", "Timestamp", "Person", "Gericht", "kcal", "protein", "carbs", "fett"]:
         if col not in df_all.columns:
             df_all[col] = 0 if col in ["kcal", "protein", "carbs", "fett"] else ""
