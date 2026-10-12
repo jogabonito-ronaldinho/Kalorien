@@ -131,7 +131,6 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             st.session_state.eintraege.append(neuer_eintrag)
             speichere_daten(st.session_state.eintraege)
             
-            # Grüne Erfolgsanzeige mit allen ermittelten Nährwerten
             st.success(f"✅ Erfasst für **{person}** ({gericht_name} - {portion}):\n\n"
                        f"🔥 **{vals['kcal']} kcal** | "
                        f"🥩 Eiweiß: **{vals['protein']}g** | "
@@ -182,39 +181,35 @@ for current_user in ["Mabe", "Richi"]:
         st.write(f"**Fett:** {curr_fett}g / {goals['fett']}g")
         st.progress(min(curr_fett / goals["fett"], 1.0))
 
-# --- HEUTIGE EINTRÄGE MIT PAPIERKORB ---
-if not df_heute.empty:
-    st.markdown("---")
-    st.markdown("### 📋 Heutige Einträge")
-    
-    for idx, row in df_heute.iterrows():
-        e_id = str(row["ID"])
-        c1, c2 = st.columns([5, 1])
-        with c1:
-            st.write(f"**{row['Person']}**: {row['Gericht']} — `{row['kcal']} kcal` (P: {row['protein']}g | C: {row['carbs']}g | F: {row['fett']}g)")
-        with c2:
-            if st.button("🗑️", key=f"btn_del_{e_id}"):
-                st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != e_id]
-                speichere_daten(st.session_state.eintraege)
-                st.rerun()
-
-# --- REPORT / HISTORIE ---
+# --- REPORT / HISTORIE MIT SCHÖNER EINZELANZEIGE & PAPIERKORB ---
 st.divider()
 st.subheader("📈 Historie & Berichte")
 
 if not df_all.empty:
-    report_typ = st.selectbox("Auswertung anzeigen für:", ["Tage (Einzelansicht mit Löschen)", "Wochen", "Monate", "Jahre"])
+    report_typ = st.selectbox("Auswertung anzeigen für:", ["Tage (Einzelansicht & Bearbeiten)", "Wochen", "Monate", "Jahre"])
     
     df_all["Datum_dt"] = pd.to_datetime(df_all["Datum"])
     
-    if report_typ == "Tage (Einzelansicht mit Löschen)":
-        st.caption("Alle erfassten Mahlzeiten einzeln. Klicke rechts auf 🗑️, um einen bestimmten Eintrag zu löschen:")
+    if report_typ == "Tage (Einzelansicht & Bearbeiten)":
+        st.caption("Alle erfassten Mahlzeiten übersichtlich dargestellt. Klicke rechts auf 🗑️, um einen Eintrag zu löschen:")
+        
         for idx, row in df_all.sort_values(by="Timestamp", ascending=False).iterrows():
             e_id = str(row["ID"])
-            c1, c2 = st.columns([5, 1])
+            c1, c2 = st.columns([6, 1])
             with c1:
-                st.write(f"**{row['Datum']}** | **{row['Person']}**: {row['Gericht']} — `{row['kcal']} kcal` (P: {row['protein']}g | C: {row['carbs']}g | F: {row['fett']}g)")
+                # Schöne, einheitliche Darstellung mit den Symbolen wie bei der Erfolgsmeldung
+                st.markdown(
+                    f"**📅 {row['Datum']} | 👤 {row['Person']}**<br>"
+                    f"🍽️ *{row['Gericht']}*<br>"
+                    f"🔥 **{int(row['kcal'])} kcal** | "
+                    f"🥩 Eiweiß: **{int(row['protein'])}g** | "
+                    f"🍞 Carbs: **{int(row['carbs'])}g** | "
+                    f"🥑 Fett: **{int(row['fett'])}g**",
+                    unsafe_allow_html=True
+                )
+                st.markdown("---")
             with c2:
+                st.write("") # Kleiner Abstand für die vertikale Ausrichtung des Buttons
                 if st.button("🗑️", key=f"hist_del_{e_id}"):
                     st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != e_id]
                     speichere_daten(st.session_state.eintraege)
