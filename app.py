@@ -18,8 +18,18 @@ def lade_daten():
             df = pd.read_csv(DATA_FILE)
             eintraege = df.to_dict(orient="records")
             for item in eintraege:
+                # IDs ergänzen, falls nicht vorhanden
                 if "ID" not in item or pd.isna(item["ID"]) or str(item["ID"]).strip() == "":
                     item["ID"] = str(uuid.uuid4())
+                # Fehlende Makros abfangen
+                if "protein" not in item or pd.isna(item["protein"]):
+                    item["protein"] = 0
+                if "carbs" not in item or pd.isna(item["carbs"]):
+                    item["carbs"] = 0
+                if "fett" not in item or pd.isna(item["fett"]):
+                    item["fett"] = 0
+                if "kcal" not in item or pd.isna(item["kcal"]):
+                    item["kcal"] = 0
             return eintraege
         except Exception:
             return []
@@ -135,6 +145,10 @@ heute_str = str(date.today())
 
 if st.session_state.eintraege:
     df_all = pd.DataFrame(st.session_state.eintraege)
+    # Sicherstellen, dass alle Spalten im DataFrame existieren
+    for col in ["ID", "Datum", "Timestamp", "Person", "Gericht", "kcal", "protein", "carbs", "fett"]:
+        if col not in df_all.columns:
+            df_all[col] = 0 if col in ["kcal", "protein", "carbs", "fett"] else ""
 else:
     df_all = pd.DataFrame(columns=["ID", "Datum", "Timestamp", "Person", "Gericht", "kcal", "protein", "carbs", "fett"])
 
@@ -159,3 +173,67 @@ for current_user in ["Mabe", "Richi"]:
         
         st.write(f"**Eiweiß:** {curr_prot}g / {goals['protein']}g")
         st.progress(min(curr_prot / goals["protein"], 1.0))
+
+        st.write(f"**Carbs:** {curr_carbs}g / {goals['carbs']}g")
+        st.progress(min(curr_carbs / goals["carbs"], 1.0))
+
+        st.write(f"**Fett:** {curr_fett}g / {goals['fett']}g")
+        st.progress(min(curr_fett / goals["fett"], 1.0))
+
+# --- HEUTIGE EINTRÄGE MIT PAPIERKORB ---
+if not df_heute.empty:
+    st.markdown("---")
+    st.markdown("### 📋 Heutige Einträge")
+    
+    for idx, row in df_heute.iterrows():
+        e_id = str(row["ID"])
+        c1, c2 = st.columns([5, 1])
+        with c1:
+            st.write(f"**{row['Person']}**: {row['Gericht']} — `{row['kcal']} kcal` (P: {row['protein']}g | C: {row['carbs']}g | F: {row['fett']}g)")
+        with c2:
+            if st.button("🗑️", key=f"btn_del_{e_id}"):
+                st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != e_id]
+                speichere_daten(st.session_state.eintraege)
+                st.rerun()
+
+# --- REPORT / HISTORIE ---
+st.divider()
+st.subheader("📈 Historie & Berichte")
+
+if not df_all.empty:
+    report_typ = st.selectbox("Auswertung anzeigen für:", ["Tage (Einzelansicht mit Löschen)", "Wochen", "Monate", "Jahre"])
+    
+    df_all["Datum_dt"] = pd.to_datetime(df_all["Datum"])
+    
+    if report_typ == "Tage (Einzelansicht mit Löschen)":
+        st.caption("Alle erfassten Mahlzeiten einzeln. Klicke rechts auf 🗑️, um einen bestimmten Eintrag zu löschen:")
+        for idx, row in df_all.sort_values(by="Timestamp", ascending=False).iterrows():
+            e_id = str(row["ID"])
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                st.write(f"**{row['Datum']}** | **{row['Person']}**: {row['Gericht']} — `{row['kcal']} kcal` (P: {row['protein']}g | C: {row['carbs']}g | F: {row['fett']}g)")
+            with c2:
+                if st.button("🗑️", key=f"hist_del_{e_id}"):
+                    st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != e_id]
+                    speichere_daten(st.session_state.eintraege)
+                    st.rerun()
+
+    elif report_typ == "Wochen":
+        df_all["Woche"] = df_all["Datum_dt"].dt.strftime('%Y-W%V')
+        wochen_agg = df_all.groupby(["Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
+        wochen_agg[["kcal", "protein", "carbs", "fett"]] = wochen_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
+        st.dataframe(wochen_agg, use_container_width=True)
+        
+    elif report_typ == "Monate":
+        df_all["Monat"] = df_all["Datum_dt"].dt.strftime('%Y-%m')
+        monat_agg = df_all.groupby(["Monat", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
+        monat_agg[["kcal", "protein", "carbs", "fett"]] = monat_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
+        st.dataframe(monat_agg, use_container_width=True)
+        
+    elif report_typ == "Jahre":
+        df_all["Jahr"] = df_all["Datum_dt"].dt.strftime('%Y')
+        jahr_agg = df_all.groupby(["Jahr", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
+        jahr_agg[["kcal", "protein", "carbs", "fett"]] = jahr_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
+        st.dataframe(jahr_agg, use_container_width=True)
+else:
+    st.info("Bisher sind noch keine Historiedaten vorhanden.")
