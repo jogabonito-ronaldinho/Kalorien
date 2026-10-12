@@ -17,7 +17,6 @@ def lade_daten():
         try:
             df = pd.read_csv(DATA_FILE)
             eintraege = df.to_dict(orient="records")
-            # Sicherstellen, dass JEDER Eintrag eine eindeutige ID besitzt
             for item in eintraege:
                 if "ID" not in item or pd.isna(item["ID"]) or str(item["ID"]).strip() == "":
                     item["ID"] = str(uuid.uuid4())
@@ -45,7 +44,6 @@ def search_or_estimate_nutrition(query_text, portion_size):
     factor = PORTION_FACTORS.get(portion_size, 1.0)
     q = query_text.lower()
     
-    # 1. Versuch: Open Food Facts API
     try:
         url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={query_text}&search_simple=1&action=process&json=1"
         res = requests.get(url, timeout=3).json()
@@ -64,7 +62,6 @@ def search_or_estimate_nutrition(query_text, portion_size):
     except Exception:
         pass
     
-    # 2. Intelligente Keyword-Schätzung
     base_kcal, prot, carbs, fett = 550, 30, 55, 18
     
     if any(k in q for k in ["salat", "gemüse", "suppe", "obst"]):
@@ -153,4 +150,12 @@ for current_user in ["Mabe", "Richi"]:
         st.markdown(f"### 👤 {current_user}")
         
         curr_kcal = int(df_heute[df_heute["Person"] == current_user]["kcal"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
-        curr_prot = int(df_heute[df_heute["Person"] == current_user]["protein"].sum()) if not df_heute.empty and "Person"
+        curr_prot = int(df_heute[df_heute["Person"] == current_user]["protein"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
+        curr_carbs = int(df_heute[df_heute["Person"] == current_user]["carbs"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
+        curr_fett = int(df_heute[df_heute["Person"] == current_user]["fett"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
+
+        st.write(f"**Kalorien:** {curr_kcal} / {goals['ziel_kcal']} kcal")
+        st.progress(min(curr_kcal / goals["ziel_kcal"], 1.0))
+        
+        st.write(f"**Eiweiß:** {curr_prot}g / {goals['protein']}g")
+        st.progress(min(curr_prot / goals["protein"], 1.0))
