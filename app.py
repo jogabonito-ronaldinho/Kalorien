@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 from datetime import datetime, date
 import os
+import uuid
 
 st.set_page_config(page_title="Mabe & Richi Tracker", page_icon="🥗", layout="centered")
 
@@ -15,10 +16,12 @@ def lade_daten():
     if os.path.exists(DATA_FILE):
         try:
             df = pd.read_csv(DATA_FILE)
-            # Sicherstellen, dass ID als Spalte existiert, falls alte Daten geladen werden
-            if "ID" not in df.columns:
-                df["ID"] = [f"old_{i}" for i in range(len(df))]
-            return df.to_dict(orient="records")
+            eintraege = df.to_dict(orient="records")
+            # Sicherstellen, dass JEDER Eintrag eine eindeutige ID besitzt
+            for item in eintraege:
+                if "ID" not in item or pd.isna(item["ID"]) or str(item["ID"]).strip() == "":
+                    item["ID"] = str(uuid.uuid4())
+            return eintraege
         except Exception:
             return []
     return []
@@ -110,7 +113,7 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             vals = search_or_estimate_nutrition(gericht_name, portion)
             
             neuer_eintrag = {
-                "ID": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                "ID": str(uuid.uuid4()),
                 "Datum": str(date.today()),
                 "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "Person": person,
@@ -133,11 +136,8 @@ st.subheader("📊 Heutiger Fortschritt")
 
 heute_str = str(date.today())
 
-# Sicherstellen, dass Daten verarbeitet werden können
 if st.session_state.eintraege:
     df_all = pd.DataFrame(st.session_state.eintraege)
-    if "ID" not in df_all.columns:
-        df_all["ID"] = [f"item_{i}" for i in range(len(df_all))]
 else:
     df_all = pd.DataFrame(columns=["ID", "Datum", "Timestamp", "Person", "Gericht", "kcal", "protein", "carbs", "fett"])
 
@@ -153,60 +153,4 @@ for current_user in ["Mabe", "Richi"]:
         st.markdown(f"### 👤 {current_user}")
         
         curr_kcal = int(df_heute[df_heute["Person"] == current_user]["kcal"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
-        curr_prot = int(df_heute[df_heute["Person"] == current_user]["protein"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
-        curr_carbs = int(df_heute[df_heute["Person"] == current_user]["carbs"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
-        curr_fett = int(df_heute[df_heute["Person"] == current_user]["fett"].sum()) if not df_heute.empty and "Person" in df_heute.columns else 0
-
-        st.write(f"**Kalorien:** {curr_kcal} / {goals['ziel_kcal']} kcal")
-        st.progress(min(curr_kcal / goals["ziel_kcal"], 1.0))
-        
-        st.write(f"**Eiweiß:** {curr_prot}g / {goals['protein']}g")
-        st.progress(min(curr_prot / goals["protein"], 1.0))
-
-        st.write(f"**Carbs:** {curr_carbs}g / {goals['carbs']}g")
-        st.progress(min(curr_carbs / goals["carbs"], 1.0))
-
-        st.write(f"**Fett:** {curr_fett}g / {goals['fett']}g")
-        st.progress(min(curr_fett / goals["fett"], 1.0))
-
-# --- HEUTIGE EINTRÄGE LÖSCHEN ---
-if not df_heute.empty:
-    st.markdown("---")
-    st.markdown("### 📋 Heutige Einträge bearbeiten / löschen")
-    
-    for idx, row in df_heute.iterrows():
-        entry_id = row.get("ID", f"idx_{idx}")
-        ts = row.get("Timestamp", "Heute")
-        cols = st.columns([3, 1])
-        with cols[0]:
-            st.text(f"[{ts}] {row['Person']} - {row['Gericht']}: {row['kcal']} kcal (P:{row['protein']}g, C:{row['carbs']}g, F:{row['fett']}g)")
-        with cols[1]:
-            if st.button("🗑️ Löschen", key=f"del_{entry_id}_{idx}"):
-                # Sicheres Entfernen nach ID oder Index
-                st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != str(entry_id)]
-                speichere_daten(st.session_state.eintraege)
-                st.rerun()
-
-# --- REPORT / HISTORIE ---
-st.divider()
-st.subheader("📈 Historie & Berichte")
-
-if not df_all.empty:
-    report_typ = st.selectbox("Auswertung anzeigen für:", ["Tage (Einzeltage)", "Wochen", "Monate", "Jahre"])
-    
-    df_all["Datum_dt"] = pd.to_datetime(df_all["Datum"])
-    
-    if report_typ == "Tage (Einzeltage)":
-        tages_agg = df_all.groupby(["Datum", "Person"])[["kcal", "protein", "carbs", "fett"]].sum().reset_index()
-        tages_agg = tages_agg.sort_values(by="Datum", ascending=False)
-        st.dataframe(tages_agg, use_container_width=True)
-        
-    elif report_typ == "Wochen":
-        df_all["Woche"] = df_all["Datum_dt"].dt.strftime('%Y-W%V')
-        wochen_agg = df_all.groupby(["Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
-        wochen_agg[["kcal", "protein", "carbs", "fett"]] = wochen_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        st.dataframe(wochen_agg, use_container_width=True)
-        
-    elif report_typ == "Monate":
-        df_all["Monat"] = df_all["Datum_dt"].dt.strftime('%Y-%m')
-        monat_agg = df
+        curr_prot = int(df_heute[df_heute["Person"] == current_user]["protein"].sum()) if not df_heute.empty and "Person"
