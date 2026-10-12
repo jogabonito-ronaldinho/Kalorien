@@ -5,11 +5,17 @@ from datetime import datetime, date
 import os
 import uuid
 
-st.set_page_config(page_title="Mabe & Richi Tracker", page_icon="🥗", layout="centered")
+# --- SEITEN-KONFIGURATION ---
+st.set_page_config(
+    page_title="Mabe & Richi Tracker",
+    page_icon="🥗",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
 st.title("🥗 Mabe & Richi's Kalorien- & Makro-Tracker")
 
-# --- DATEI-SPEICHERUNG ---
+# --- DATEI-SPEICHERUNG (CSV PERSISTENZ) ---
 DATA_FILE = "kalorien_daten.csv"
 
 def lade_daten():
@@ -17,6 +23,7 @@ def lade_daten():
         try:
             df = pd.read_csv(DATA_FILE)
             eintraege = df.to_dict(orient="records")
+            # Abwärtskompatibilität & Bereinigung alter Einträge
             for item in eintraege:
                 if "ID" not in item or pd.isna(item["ID"]) or str(item["ID"]).strip() == "":
                     item["ID"] = str(uuid.uuid4())
@@ -37,22 +44,45 @@ def speichere_daten(eintraege_liste):
     df = pd.DataFrame(eintraege_liste)
     df.to_csv(DATA_FILE, index=False)
 
+# Session State Initialisierungen
 if "eintraege" not in st.session_state:
     st.session_state.eintraege = lade_daten()
 
-# --- ZIELE ---
+if "last_success" not in st.session_state:
+    st.session_state.last_success = None
+
+if "clear_camera" not in st.session_state:
+    st.session_state.clear_camera = False
+
+# --- NUTZER-ZIELE ---
 USER_GOALS = {
-    "Mabe": {"ziel_kcal": 1900, "protein": 150, "fett": 55, "carbs": 200},
-    "Richi": {"ziel_kcal": 2200, "protein": 150, "fett": 70, "carbs": 240}
+    "Mabe": {
+        "ziel_kcal": 1900,
+        "protein": 150,
+        "fett": 55,
+        "carbs": 200
+    },
+    "Richi": {
+        "ziel_kcal": 2200,
+        "protein": 150,
+        "fett": 70,
+        "carbs": 240
+    }
 }
 
-PORTION_FACTORS = {"Klein": 0.7, "Mittel": 1.0, "Groß": 1.4}
+PORTION_FACTORS = {
+    "Klein": 0.7,
+    "Mittel": 1.0,
+    "Groß": 1.4
+}
 
+# --- NÄHRWERT-SCHÄTZUNG & DATABASE-SUCHE ---
 def search_or_estimate_nutrition(query_text, portion_size):
     factor = PORTION_FACTORS.get(portion_size, 1.0)
     q = query_text.lower()
     gefundenes_gericht = query_text
     
+    # 1. Versuche Abfrage über Open Food Facts API
     try:
         url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={query_text}&search_simple=1&action=process&json=1"
         res = requests.get(url, timeout=3).json()
@@ -75,16 +105,17 @@ def search_or_estimate_nutrition(query_text, portion_size):
     except Exception:
         pass
     
-    base_kcal, prot, carbs, fett = 550, 30, 55, 18
+    # 2. Regelbasierte Keyword-Erkennung falls API keine Treffer liefert
+    base_kcal, prot, carbs, fett = 600, 35, 65, 20
     
     if any(k in q for k in ["salat", "gemüse", "suppe", "obst"]):
-        base_kcal, prot, carbs, fett = 320, 15, 30, 12
+        base_kcal, prot, carbs, fett = 350, 15, 30, 12
     elif any(k in q for k in ["pizza", "burger", "pasta", "nudeln", "steak", "pommes", "döner"]):
-        base_kcal, prot, carbs, fett = 780, 35, 80, 32
+        base_kcal, prot, carbs, fett = 850, 40, 85, 35
     elif any(k in q for k in ["shake", "protein", "riegel", "quark", "joghurt"]):
-        base_kcal, prot, carbs, fett = 280, 30, 20, 6
+        base_kcal, prot, carbs, fett = 300, 30, 20, 6
     elif any(k in q for k in ["reis", "hähnchen", "pute", "fisch", "lachs"]):
-        base_kcal, prot, carbs, fett = 520, 42, 45, 14
+        base_kcal, prot, carbs, fett = 550, 45, 50, 15
 
     return {
         "gericht": gefundenes_gericht,
@@ -107,12 +138,15 @@ camera_foto = None
 if eingabe_art == "Suche / Name des Gerichts":
     col1, col2 = st.columns([2, 1])
     with col1:
-        such_text = st.text_input("Name des Gerichts (z.B. Lachs mit Reis, Caesar Salad)", key="input_gericht")
+        such_text = st.text_input("Name des Gerichts (z.B. Lachs mit Reis, Caesar Salad)", value="", key="input_gericht")
     with col2:
         portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_suche")
 else:
     st.markdown("📷 **Kamera öffnen & Foto machen:**")
-    camera_foto = st.camera_input("Kamera")
+    
+    # Schlüssel-Rotation zur dynamischen Zurücksetzung des Kamera-Inputs
+    cam_key = f"camera_{st.session_state.get('cam_id', 0)}"
+    camera_foto = st.camera_input("Kamera", key=cam_key)
     portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_foto")
 
 if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
@@ -120,7 +154,7 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
     finaler_gericht_name = ""
     
     if eingabe_art == "Suche / Name des Gerichts":
-        if such_text:
+        if such_text and such_text.strip() != "":
             with st.spinner("Analysiere Nährwerte..."):
                 res_vals = search_or_estimate_nutrition(such_text, portion)
                 finaler_gericht_name = res_vals["gericht"]
@@ -132,11 +166,13 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             with st.spinner("Verarbeite Foto..."):
                 base_factor = PORTION_FACTORS.get(portion, 1.0)
                 finaler_gericht_name = "Mahlzeit"
+                
+                # Realistische Portionswerte für ein Hauptgericht vom Foto
                 vals = {
-                    "kcal": int(550 * base_factor),
-                    "protein": int(30 * base_factor),
-                    "carbs": int(55 * base_factor),
-                    "fett": int(18 * base_factor)
+                    "kcal": int(600 * base_factor),
+                    "protein": int(35 * base_factor),
+                    "carbs": int(65 * base_factor),
+                    "fett": int(20 * base_factor)
                 }
         else:
             st.warning("Bitte zuerst ein Foto mit der Kamera aufnehmen.")
@@ -155,16 +191,30 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             "carbs": vals["carbs"],
             "fett": vals["fett"]
         }
+        
         st.session_state.eintraege.append(neuer_eintrag)
         speichere_daten(st.session_state.eintraege)
         
-        st.success(f"✅ Erfasst für **{person}** ({gericht_bezeichnung} - {portion}):\n\n"
-                   f"🔥 **{vals['kcal']} kcal** | "
-                   f"🥩 Eiweiß: **{vals['protein']}g** | "
-                   f"🍞 Carbs: **{vals['carbs']}g** | "
-                   f"🥑 Fett: **{vals['fett']}g**")
+        # Grüne Erfolgsmeldung für den nächsten Rerun speichern
+        st.session_state.last_success = (
+            f"✅ Erfasst für **{person}** ({gericht_bezeichnung} - {portion}):\n\n"
+            f"🔥 **{vals['kcal']} kcal** | "
+            f"🥩 Eiweiß: **{vals['protein']}g** | "
+            f"🍞 Carbs: **{vals['carbs']}g** | "
+            f"🥑 Fett: **{vals['fett']}g**"
+        )
+        
+        # Zurücksetzen der Eingabefelder
+        if "input_gericht" in st.session_state:
+            st.session_state["input_gericht"] = ""
+        st.session_state["cam_id"] = st.session_state.get("cam_id", 0) + 1
         
         st.rerun()
+
+# Erfolgsmeldung anzeigen
+if st.session_state.last_success:
+    st.success(st.session_state.last_success)
+    st.session_state.last_success = None
 
 # --- HEUTIGER FORTSCHRITT MIT SYMBOLEN ---
 st.divider()
@@ -213,7 +263,10 @@ st.divider()
 st.subheader("📈 Historie & Berichte")
 
 if not df_all.empty:
-    report_typ = st.selectbox("Auswertung anzeigen für:", ["Tage (Einzelansicht & Bearbeiten)", "Wochen", "Monate", "Jahre"])
+    report_typ = st.selectbox(
+        "Auswertung anzeigen für:",
+        ["Tage (Einzelansicht & Bearbeiten)", "Wochen", "Monate", "Jahre"]
+    )
     
     df_all["Datum_dt"] = pd.to_datetime(df_all["Datum"])
     
@@ -244,7 +297,12 @@ if not df_all.empty:
         df_all["Woche"] = df_all["Datum_dt"].dt.strftime('%Y-W%V')
         wochen_agg = df_all.groupby(["Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
         wochen_agg[["kcal", "protein", "carbs", "fett"]] = wochen_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        wochen_agg = wochen_agg.rename(columns={"kcal": "🔥 kcal", "protein": "🥩 Eiweiß (g)", "carbs": "🍞 Carbs (g)", "fett": "🥑 Fett (g)"})
+        wochen_agg = wochen_agg.rename(columns={
+            "kcal": "🔥 kcal",
+            "protein": "🥩 Eiweiß (g)",
+            "carbs": "🍞 Carbs (g)",
+            "fett": "🥑 Fett (g)"
+        })
         st.caption("Durchschnittliche Tageswerte pro Kalenderwoche:")
         st.dataframe(wochen_agg, use_container_width=True)
         
@@ -252,7 +310,12 @@ if not df_all.empty:
         df_all["Monat"] = df_all["Datum_dt"].dt.strftime('%Y-%m')
         monat_agg = df_all.groupby(["Monat", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
         monat_agg[["kcal", "protein", "carbs", "fett"]] = monat_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        monat_agg = monat_agg.rename(columns={"kcal": "🔥 kcal", "protein": "🥩 Eiweiß (g)", "carbs": "🍞 Carbs (g)", "fett": "🥑 Fett (g)"})
+        monat_agg = monat_agg.rename(columns={
+            "kcal": "🔥 kcal",
+            "protein": "🥩 Eiweiß (g)",
+            "carbs": "🍞 Carbs (g)",
+            "fett": "🥑 Fett (g)"
+        })
         st.caption("Durchschnittliche Tageswerte pro Monat:")
         st.dataframe(monat_agg, use_container_width=True)
         
@@ -260,7 +323,12 @@ if not df_all.empty:
         df_all["Jahr"] = df_all["Datum_dt"].dt.strftime('%Y')
         jahr_agg = df_all.groupby(["Jahr", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
         jahr_agg[["kcal", "protein", "carbs", "fett"]] = jahr_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        jahr_agg = jahr_agg.rename(columns={"kcal": "🔥 kcal", "protein": "🥩 Eiweiß (g)", "carbs": "🍞 Carbs (g)", "fett": "🥑 Fett (g)"})
+        jahr_agg = jahr_agg.rename(columns={
+            "kcal": "🔥 kcal",
+            "protein": "🥩 Eiweiß (g)",
+            "carbs": "🍞 Carbs (g)",
+            "fett": "🥑 Fett (g)"
+        })
         st.caption("Durchschnittliche Tageswerte pro Jahr:")
         st.dataframe(jahr_agg, use_container_width=True)
 else:
