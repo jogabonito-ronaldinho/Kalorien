@@ -52,6 +52,8 @@ def search_or_estimate_nutrition(query_text, portion_size):
     factor = PORTION_FACTORS.get(portion_size, 1.0)
     q = query_text.lower()
     
+    gefundenes_gericht = query_text  # Standardmäßig das Gesuchte
+    
     try:
         url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={query_text}&search_simple=1&action=process&json=1"
         res = requests.get(url, timeout=3).json()
@@ -59,9 +61,13 @@ def search_or_estimate_nutrition(query_text, portion_size):
             for p in res["products"]:
                 nutriments = p.get("nutriments", {})
                 kcal_100 = nutriments.get("energy-kcal_100g")
+                product_name = p.get("product_name")
                 if kcal_100 and kcal_100 > 0:
+                    if product_name:
+                        gefundenes_gericht = product_name
                     base_g = 350 * factor
                     return {
+                        "gericht": gefundenes_gericht,
                         "kcal": int(kcal_100 * (base_g / 100)),
                         "protein": int(nutriments.get("proteins_100g", 15) * (base_g / 100)),
                         "carbs": int(nutriments.get("carbohydrates_100g", 25) * (base_g / 100)),
@@ -82,6 +88,7 @@ def search_or_estimate_nutrition(query_text, portion_size):
         base_kcal, prot, carbs, fett = 520, 42, 45, 14
 
     return {
+        "gericht": gefundenes_gericht,
         "kcal": int(base_kcal * factor),
         "protein": int(prot * factor),
         "carbs": int(carbs * factor),
@@ -94,35 +101,41 @@ st.subheader("📝 Mahlzeit erfassen")
 person = st.radio("Wer isst?", ["Mabe", "Richi"], horizontal=True, key="person_wahl")
 eingabe_art = st.radio("Erfassungsart", ["Suche / Name des Gerichts", "Foto hochladen / machen"], horizontal=True)
 
-gericht_name = ""
+such_text = ""
 portion = "Mittel"
+ist_foto = False
 
 if eingabe_art == "Suche / Name des Gerichts":
     col1, col2 = st.columns([2, 1])
     with col1:
-        gericht_name = st.text_input("Name des Gerichts (z.B. Lachs mit Reis, Caesar Salad)", key="input_gericht")
+        such_text = st.text_input("Name des Gerichts (z.B. Lachs mit Reis, Caesar Salad)", key="input_gericht")
     with col2:
         portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_suche")
 else:
     uploaded_file = st.file_uploader("Foto des Gerichts aufnehmen oder hochladen", type=["jpg", "png", "jpeg"])
     col1, col2 = st.columns([2, 1])
     with col1:
-        foto_text = st.text_input("Was ist auf dem Foto? (z.B. Cheeseburger)", key="input_foto")
-        gericht_name = foto_text if foto_text else "Gericht vom Foto"
+        such_text = st.text_input("Was ist auf dem Foto? (z.B. Cheeseburger)", key="input_foto")
+        ist_foto = True
     with col2:
         portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_foto")
 
 if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
-    if gericht_name:
+    if such_text:
         with st.spinner("Analysiere Nährwerte..."):
-            vals = search_or_estimate_nutrition(gericht_name, portion)
+            vals = search_or_estimate_nutrition(such_text, portion)
+            
+            # Gerichtsbezeichnung anpassen (mit Foto-Präfix falls Foto gewählt wurde)
+            finaler_gericht_name = vals["gericht"]
+            if ist_foto:
+                finaler_gericht_name = f"Foto: {finaler_gericht_name}"
             
             neuer_eintrag = {
                 "ID": str(uuid.uuid4()),
                 "Datum": str(date.today()),
                 "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "Person": person,
-                "Gericht": f"{gericht_name} ({portion})",
+                "Gericht": f"{finaler_gericht_name} ({portion})",
                 "kcal": vals["kcal"],
                 "protein": vals["protein"],
                 "carbs": vals["carbs"],
@@ -131,13 +144,12 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             st.session_state.eintraege.append(neuer_eintrag)
             speichere_daten(st.session_state.eintraege)
             
-            st.success(f"✅ Erfasst für **{person}** ({gericht_name} - {portion}):\n\n"
+            st.success(f"✅ Erfasst für **{person}** ({finaler_gericht_name} - {portion}):\n\n"
                        f"🔥 **{vals['kcal']} kcal** | "
                        f"🥩 Eiweiß: **{vals['protein']}g** | "
                        f"🍞 Carbs: **{vals['carbs']}g** | "
                        f"🥑 Fett: **{vals['fett']}g**")
             
-            # App kurz neu laden, damit das Eingabefeld geleert wird
             st.rerun()
     else:
         st.warning("Bitte gib einen Namen oder eine Beschreibung ein.")
@@ -184,7 +196,7 @@ for current_user in ["Mabe", "Richi"]:
         st.write(f"🥑 **Fett:** {curr_fett}g / {goals['fett']}g")
         st.progress(min(curr_fett / goals["fett"], 1.0))
 
-# --- REPORT / HISTORIE MIT SAUBERER ZUORDNUNG & SYMBOLEN ---
+# --- REPORT / HISTORIE ---
 st.divider()
 st.subheader("📈 Historie & Berichte")
 
@@ -199,7 +211,6 @@ if not df_all.empty:
         for idx, row in df_all.sort_values(by="Timestamp", ascending=False).iterrows():
             e_id = str(row["ID"])
             
-            # Jedes Element in eine kompakte Zeile mit Text links und Papierkorb rechts
             cols = st.columns([10, 1])
             with cols[0]:
                 st.markdown(
@@ -211,7 +222,6 @@ if not df_all.empty:
                     unsafe_allow_html=True
                 )
             with cols[1]:
-                # Button direkt auf Höhe des Eintrags platziert
                 if st.button("🗑️", key=f"hist_del_{e_id}", help="Eintrag löschen"):
                     st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != e_id]
                     speichere_daten(st.session_state.eintraege)
@@ -222,7 +232,6 @@ if not df_all.empty:
         df_all["Woche"] = df_all["Datum_dt"].dt.strftime('%Y-W%V')
         wochen_agg = df_all.groupby(["Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
         wochen_agg[["kcal", "protein", "carbs", "fett"]] = wochen_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        # Symbole in die Spaltennamen einbauen für die Auswertung
         wochen_agg = wochen_agg.rename(columns={"kcal": "🔥 kcal", "protein": "🥩 Eiweiß (g)", "carbs": "🍞 Carbs (g)", "fett": "🥑 Fett (g)"})
         st.caption("Durchschnittliche Tageswerte pro Kalenderwoche:")
         st.dataframe(wochen_agg, use_container_width=True)
