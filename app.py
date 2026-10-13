@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+import altair as alt
 from datetime import datetime, date
 import os
 import uuid
@@ -289,7 +290,7 @@ if not df_all.empty:
         st.caption("Durchschnittliche Tageswerte pro Kalenderwoche:")
         st.dataframe(tab_display, use_container_width=True)
         
-        # GRAFIK CHART INKLUSIVE FARBIGER ZIEL-LINIEN
+        # GRAFIK CHART MIT SPEZIFISCHEN FARBEN (Altair)
         st.markdown("#### 📉 Kalorienverlauf pro Woche")
         chart_data = wochen_agg.pivot(index="Woche", columns="Person", values="kcal")
         for u in ["Mabe", "Richi"]:
@@ -297,7 +298,25 @@ if not df_all.empty:
                 chart_data[u] = None
         chart_data["Ziel Mabe (1900 kcal)"] = USER_GOALS["Mabe"]["ziel_kcal"]
         chart_data["Ziel Richi (2200 kcal)"] = USER_GOALS["Richi"]["ziel_kcal"]
-        st.line_chart(chart_data)
+        
+        df_melted = chart_data.reset_index().melt(id_vars=["Woche"], var_name="Kategorie", value_name="Kalorien")
+        
+        color_scale = alt.Scale(
+            domain=["Mabe", "Richi", "Ziel Mabe (1900 kcal)", "Ziel Richi (2200 kcal)"],
+            range=["#8B0000", "#002B80", "#FF8080", "#80B3FF"] # Mabe Dunkelrot, Richi Dunkelblau, Mabe Ziel transparentes Rot, Richi Ziel transparentes Blau
+        )
+        
+        c = alt.Chart(df_melted).mark_line(point=True, strokeWidth=3).encode(
+            x=alt.X("Woche:N", title="Woche"),
+            y=alt.Y("Kalorien:Q", title="Kalorien (kcal)"),
+            color=alt.Color("Kategorie:N", scale=color_scale, legend=alt.Legend(title="Legende")),
+            strokeDash=alt.condition(
+                alt.datum.Kategorie.str.contains("Ziel"),
+                alt.value([5, 5]),
+                alt.value([0])
+            )
+        ).properties(height=300)
+        st.altair_chart(c, use_container_width=True)
         
     elif report_typ == "Monate":
         df_all["Monat"] = df_all["Datum_dt"].dt.strftime('%Y-%m')
@@ -315,7 +334,7 @@ if not df_all.empty:
         st.caption("Durchschnittliche Tageswerte pro Monat:")
         st.dataframe(tab_display, use_container_width=True)
         
-        # GRAFIK CHART INKLUSIVE FARBIGER ZIEL-LINIEN
+        # GRAFIK CHART MIT SPEZIFISCHEN FARBEN (Altair)
         st.markdown("#### 📉 Kalorienverlauf pro Monat")
         chart_data = monat_agg.pivot(index="Monat", columns="Person", values="kcal")
         for u in ["Mabe", "Richi"]:
@@ -323,7 +342,25 @@ if not df_all.empty:
                 chart_data[u] = None
         chart_data["Ziel Mabe (1900 kcal)"] = USER_GOALS["Mabe"]["ziel_kcal"]
         chart_data["Ziel Richi (2200 kcal)"] = USER_GOALS["Richi"]["ziel_kcal"]
-        st.line_chart(chart_data)
+        
+        df_melted = chart_data.reset_index().melt(id_vars=["Monat"], var_name="Kategorie", value_name="Kalorien")
+        
+        color_scale = alt.Scale(
+            domain=["Mabe", "Richi", "Ziel Mabe (1900 kcal)", "Ziel Richi (2200 kcal)"],
+            range=["#8B0000", "#002B80", "#FF8080", "#80B3FF"]
+        )
+        
+        c = alt.Chart(df_melted).mark_line(point=True, strokeWidth=3).encode(
+            x=alt.X("Monat:N", title="Monat"),
+            y=alt.Y("Kalorien:Q", title="Kalorien (kcal)"),
+            color=alt.Color("Kategorie:N", scale=color_scale, legend=alt.Legend(title="Legende")),
+            strokeDash=alt.condition(
+                alt.datum.Kategorie.str.contains("Ziel"),
+                alt.value([5, 5]),
+                alt.value([0])
+            )
+        ).properties(height=300)
+        st.altair_chart(c, use_container_width=True)
         
     elif report_typ == "Jahre":
         df_all["Jahr"] = df_all["Datum_dt"].dt.strftime('%Y')
@@ -341,7 +378,7 @@ if not df_all.empty:
         st.caption("Durchschnittliche Tageswerte pro Jahr:")
         st.dataframe(tab_display, use_container_width=True)
         
-        # GRAFIK CHART INKLUSIVE FARBIGER ZIEL-LINIEN
+        # GRAFIK CHART MIT SPEZIFISCHEN FARBEN (Altair)
         st.markdown("#### 📉 Kalorienverlauf pro Jahr")
         chart_data = jahr_agg.pivot(index="Jahr", columns="Person", values="kcal")
         for u in ["Mabe", "Richi"]:
@@ -349,6 +386,24 @@ if not df_all.empty:
                 chart_data[u] = None
         chart_data["Ziel Mabe (1900 kcal)"] = USER_GOALS["Mabe"]["ziel_kcal"]
         chart_data["Ziel Richi (2200 kcal)"] = USER_GOALS["Richi"]["ziel_kcal"]
-        st.line_chart(chart_data)
+        
+        df_melted = chart_data.reset_index().melt(id_vars=["Jahr"], var_name="Kategorie", value_name="Kalorien")
+        
+        color_scale = alt.Scale(
+            domain=["Mabe", "Richi", "Ziel Mabe (1900 kcal)", "Ziel Richi (2200 kcal)"],
+            range=["#8B0000", "#002B80", "#FF8080", "#80B3FF"]
+        )
+        
+        c = alt.Chart(df_melted).mark_line(point=True, strokeWidth=3).encode(
+            x=alt.X("Jahr:N", title="Jahr"),
+            y=alt.Y("Kalorien:Q", title="Kalorien (kcal)"),
+            color=alt.Color("Kategorie:N", scale=color_scale, legend=alt.Legend(title="Legende")),
+            strokeDash=alt.condition(
+                alt.datum.Kategorie.str.contains("Ziel"),
+                alt.value([5, 5]),
+                alt.value([0])
+            )
+        ).properties(height=300)
+        st.altair_chart(c, use_container_width=True)
 else:
     st.info("Bisher sind noch keine Historiedaten vorhanden.")
