@@ -268,48 +268,4 @@ if not df_all.empty:
                 )
             with cols[1]:
                 if st.button("🗑️", key=f"hist_del_{e_id}", help="Eintrag löschen"):
-                    st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != e_id]
-                    speichere_daten(st.session_state.eintraege)
-                    st.rerun()
-            st.divider()
-
-    elif report_typ == "Wochen":
-        df_all["Woche"] = df_all["Datum_dt"].dt.strftime('%Y-W%V')
-        wochen_agg = df_all.groupby(["Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
-        wochen_agg[["kcal", "protein", "carbs", "fett"]] = wochen_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        wochen_agg = wochen_agg.rename(columns={
-            "kcal": "🔥 kcal",
-            "protein": "🥩 Eiweiß (g)",
-            "carbs": "🍞 Carbs (g)",
-            "fett": "🥑 Fett (g)"
-        })
-        st.caption("Durchschnittliche Tageswerte pro Kalenderwoche:")
-        st.dataframe(wochen_agg, use_container_width=True)
-        
-    elif report_typ == "Monate":
-        df_all["Monat"] = df_all["Datum_dt"].dt.strftime('%Y-%m')
-        monat_agg = df_all.groupby(["Monat", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
-        monat_agg[["kcal", "protein", "carbs", "fett"]] = monat_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        monat_agg = monat_agg.rename(columns={
-            "kcal": "🔥 kcal",
-            "protein": "🥩 Eiweiß (g)",
-            "carbs": "🍞 Carbs (g)",
-            "fett": "🥑 Fett (g)"
-        })
-        st.caption("Durchschnittliche Tageswerte pro Monat:")
-        st.dataframe(monat_agg, use_container_width=True)
-        
-    elif report_typ == "Jahre":
-        df_all["Jahr"] = df_all["Datum_dt"].dt.strftime('%Y')
-        jahr_agg = df_all.groupby(["Jahr", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
-        jahr_agg[["kcal", "protein", "carbs", "fett"]] = jahr_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
-        jahr_agg = jahr_agg.rename(columns={
-            "kcal": "🔥 kcal",
-            "protein": "🥩 Eiweiß (g)",
-            "carbs": "🍞 Carbs (g)",
-            "fett": "🥑 Fett (g)"
-        })
-        st.caption("Durchschnittliche Tageswerte pro Jahr:")
-        st.dataframe(jahr_agg, use_container_width=True)
-else:
-    st.info("Bisher sind noch keine Historiedaten vorhanden.")
+                    st.session_state.e
