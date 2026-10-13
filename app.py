@@ -79,46 +79,25 @@ PORTION_FACTORS = {
     "Groß": 1.4
 }
 
-# --- NÄHRWERT-SCHÄTZUNG & DATABASE-SUCHE ---
+# --- REALISTISCHE NÄHRWERT-SCHÄTZUNG ---
 def search_or_estimate_nutrition(query_text, portion_size):
     factor = PORTION_FACTORS.get(portion_size, 1.0)
     q = query_text.lower()
     gefundenes_gericht = query_text
     
-    # 1. Versuche Abfrage über Open Food Facts API
-    try:
-        url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={query_text}&search_simple=1&action=process&json=1"
-        res = requests.get(url, timeout=3).json()
-        if res.get("products") and len(res["products"]) > 0:
-            for p in res["products"]:
-                nutriments = p.get("nutriments", {})
-                kcal_100 = nutriments.get("energy-kcal_100g")
-                product_name = p.get("product_name")
-                if kcal_100 and kcal_100 > 0:
-                    if product_name:
-                        gefundenes_gericht = product_name
-                    base_g = 350 * factor
-                    return {
-                        "gericht": gefundenes_gericht,
-                        "kcal": int(kcal_100 * (base_g / 100)),
-                        "protein": int(nutriments.get("proteins_100g", 15) * (base_g / 100)),
-                        "carbs": int(nutriments.get("carbohydrates_100g", 25) * (base_g / 100)),
-                        "fett": int(nutriments.get("fat_100g", 10) * (base_g / 100))
-                    }
-    except Exception:
-        pass
+    # Intelligente, realistische Richtwerte basierend auf typischen Portionsgrößen (Mittel = 1.0x)
+    base_kcal, prot, carbs, fett = 650, 40, 60, 20
     
-    # 2. Regelbasierte Keyword-Erkennung falls API keine Treffer liefert
-    base_kcal, prot, carbs, fett = 600, 35, 65, 20
-    
-    if any(k in q for k in ["salat", "gemüse", "suppe", "obst"]):
-        base_kcal, prot, carbs, fett = 350, 15, 30, 12
-    elif any(k in q for k in ["pizza", "burger", "pasta", "nudeln", "steak", "pommes", "döner"]):
-        base_kcal, prot, carbs, fett = 850, 40, 85, 35
+    if any(k in q for k in ["spätzle", "rindfleisch", "fleisch", "braten", "gulasch", "pizza", "burger", "pasta", "nudeln", "steak", "pommes", "döner", "schnitzel", "schwein"]):
+        base_kcal, prot, carbs, fett = 850, 45, 85, 35  # Deftige Hauptgerichte
+    elif any(k in q for k in ["reis", "hähnchen", "pute", "fisch", "lachs", "kartoffeln"]):
+        base_kcal, prot, carbs, fett = 650, 50, 60, 18  # Fitness / Standard
+    elif any(k in q for k in ["omelette", "ei", "eier", "rührei", "spiegelei", "frühstück"]):
+        base_kcal, prot, carbs, fett = 480, 32, 10, 34  # Eiergerichte
     elif any(k in q for k in ["shake", "protein", "riegel", "quark", "joghurt"]):
-        base_kcal, prot, carbs, fett = 300, 30, 20, 6
-    elif any(k in q for k in ["reis", "hähnchen", "pute", "fisch", "lachs"]):
-        base_kcal, prot, carbs, fett = 550, 45, 50, 15
+        base_kcal, prot, carbs, fett = 320, 35, 22, 6   # Snacks / Protein
+    elif any(k in q for k in ["salat", "gemüse", "suppe", "obst"]):
+        base_kcal, prot, carbs, fett = 400, 20, 35, 15  # Leichte Gerichte
 
     return {
         "gericht": gefundenes_gericht,
@@ -141,7 +120,6 @@ camera_foto = None
 if eingabe_art == "Suche / Name des Gerichts":
     col1, col2 = st.columns([2, 1])
     with col1:
-        # Dynamischer Key zur sauberen Rücksetzung des Textfelds ohne Error
         text_key = f"input_gericht_{st.session_state.input_key}"
         such_text = st.text_input("Name des Gerichts (z.B. Lachs mit Reis, Caesar Salad)", key=text_key)
     with col2:
@@ -170,12 +148,12 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
                 base_factor = PORTION_FACTORS.get(portion, 1.0)
                 finaler_gericht_name = "Mahlzeit"
                 
-                # Realistische Portionswerte für ein Hauptgericht vom Foto
+                # Realistische Portionswerte für ein fotografiertes Hauptgericht
                 vals = {
-                    "kcal": int(600 * base_factor),
-                    "protein": int(35 * base_factor),
+                    "kcal": int(650 * base_factor),
+                    "protein": int(38 * base_factor),
                     "carbs": int(65 * base_factor),
-                    "fett": int(20 * base_factor)
+                    "fett": int(22 * base_factor)
                 }
         else:
             st.warning("Bitte zuerst ein Foto mit der Kamera aufnehmen.")
@@ -207,7 +185,7 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             f"🥑 Fett: **{vals['fett']}g**"
         )
         
-        # Zurücksetzen der Eingabefelder über Key-Rotation (sicher und fehlerfrei)
+        # Zurücksetzen der Eingabefelder über Key-Rotation
         st.session_state.input_key += 1
         st.session_state.cam_id += 1
         
