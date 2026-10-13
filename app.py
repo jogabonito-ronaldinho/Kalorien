@@ -276,7 +276,6 @@ if not df_all.empty:
     elif report_typ == "Wochen":
         df_all["Woche"] = df_all["Datum_dt"].dt.strftime('%Y-W%V')
         
-        # Tages-Summen berechnen, dann den Wochendurchschnitt pro Tag ermitteln
         tages_summen = df_all.groupby(["Datum", "Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].sum().reset_index()
         wochen_agg = tages_summen.groupby(["Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
         wochen_agg[["kcal", "protein", "carbs", "fett"]] = wochen_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
@@ -286,3 +285,70 @@ if not df_all.empty:
             "protein": "🥩 Eiweiß (g)",
             "carbs": "🍞 Carbs (g)",
             "fett": "🥑 Fett (g)"
+        })
+        st.caption("Durchschnittliche Tageswerte pro Kalenderwoche:")
+        st.dataframe(tab_display, use_container_width=True)
+        
+        # GRAFIK CHART INKLUSIVE FARBIGER ZIEL-LINIEN
+        st.markdown("#### 📉 Kalorienverlauf pro Woche")
+        chart_data = wochen_agg.pivot(index="Woche", columns="Person", values="kcal")
+        for u in ["Mabe", "Richi"]:
+            if u not in chart_data.columns:
+                chart_data[u] = None
+        chart_data["Ziel Mabe (1900 kcal)"] = USER_GOALS["Mabe"]["ziel_kcal"]
+        chart_data["Ziel Richi (2200 kcal)"] = USER_GOALS["Richi"]["ziel_kcal"]
+        st.line_chart(chart_data)
+        
+    elif report_typ == "Monate":
+        df_all["Monat"] = df_all["Datum_dt"].dt.strftime('%Y-%m')
+        
+        tages_summen = df_all.groupby(["Datum", "Monat", "Person"])[["kcal", "protein", "carbs", "fett"]].sum().reset_index()
+        monat_agg = tages_summen.groupby(["Monat", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
+        monat_agg[["kcal", "protein", "carbs", "fett"]] = monat_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
+        
+        tab_display = monat_agg.rename(columns={
+            "kcal": "🔥 kcal (Tagesschnitt)",
+            "protein": "🥩 Eiweiß (g)",
+            "carbs": "🍞 Carbs (g)",
+            "fett": "🥑 Fett (g)"
+        })
+        st.caption("Durchschnittliche Tageswerte pro Monat:")
+        st.dataframe(tab_display, use_container_width=True)
+        
+        # GRAFIK CHART INKLUSIVE FARBIGER ZIEL-LINIEN
+        st.markdown("#### 📉 Kalorienverlauf pro Monat")
+        chart_data = monat_agg.pivot(index="Monat", columns="Person", values="kcal")
+        for u in ["Mabe", "Richi"]:
+            if u not in chart_data.columns:
+                chart_data[u] = None
+        chart_data["Ziel Mabe (1900 kcal)"] = USER_GOALS["Mabe"]["ziel_kcal"]
+        chart_data["Ziel Richi (2200 kcal)"] = USER_GOALS["Richi"]["ziel_kcal"]
+        st.line_chart(chart_data)
+        
+    elif report_typ == "Jahre":
+        df_all["Jahr"] = df_all["Datum_dt"].dt.strftime('%Y')
+        
+        tages_summen = df_all.groupby(["Datum", "Jahr", "Person"])[["kcal", "protein", "carbs", "fett"]].sum().reset_index()
+        jahr_agg = tages_summen.groupby(["Jahr", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
+        jahr_agg[["kcal", "protein", "carbs", "fett"]] = jahr_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
+        
+        tab_display = jahr_agg.rename(columns={
+            "kcal": "🔥 kcal (Tagesschnitt)",
+            "protein": "🥩 Eiweiß (g)",
+            "carbs": "🍞 Carbs (g)",
+            "fett": "🥑 Fett (g)"
+        })
+        st.caption("Durchschnittliche Tageswerte pro Jahr:")
+        st.dataframe(tab_display, use_container_width=True)
+        
+        # GRAFIK CHART INKLUSIVE FARBIGER ZIEL-LINIEN
+        st.markdown("#### 📉 Kalorienverlauf pro Jahr")
+        chart_data = jahr_agg.pivot(index="Jahr", columns="Person", values="kcal")
+        for u in ["Mabe", "Richi"]:
+            if u not in chart_data.columns:
+                chart_data[u] = None
+        chart_data["Ziel Mabe (1900 kcal)"] = USER_GOALS["Mabe"]["ziel_kcal"]
+        chart_data["Ziel Richi (2200 kcal)"] = USER_GOALS["Richi"]["ziel_kcal"]
+        st.line_chart(chart_data)
+else:
+    st.info("Bisher sind noch keine Historiedaten vorhanden.")
