@@ -51,8 +51,11 @@ if "eintraege" not in st.session_state:
 if "last_success" not in st.session_state:
     st.session_state.last_success = None
 
-if "clear_camera" not in st.session_state:
-    st.session_state.clear_camera = False
+if "input_key" not in st.session_state:
+    st.session_state.input_key = 0
+
+if "cam_id" not in st.session_state:
+    st.session_state.cam_id = 0
 
 # --- NUTZER-ZIELE ---
 USER_GOALS = {
@@ -138,14 +141,14 @@ camera_foto = None
 if eingabe_art == "Suche / Name des Gerichts":
     col1, col2 = st.columns([2, 1])
     with col1:
-        such_text = st.text_input("Name des Gerichts (z.B. Lachs mit Reis, Caesar Salad)", value="", key="input_gericht")
+        # Dynamischer Key zur sauberen Rücksetzung des Textfelds ohne Error
+        text_key = f"input_gericht_{st.session_state.input_key}"
+        such_text = st.text_input("Name des Gerichts (z.B. Lachs mit Reis, Caesar Salad)", key=text_key)
     with col2:
         portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_suche")
 else:
     st.markdown("📷 **Kamera öffnen & Foto machen:**")
-    
-    # Schlüssel-Rotation zur dynamischen Zurücksetzung des Kamera-Inputs
-    cam_key = f"camera_{st.session_state.get('cam_id', 0)}"
+    cam_key = f"camera_{st.session_state.cam_id}"
     camera_foto = st.camera_input("Kamera", key=cam_key)
     portion = st.selectbox("Portionsgröße", ["Klein", "Mittel", "Groß"], index=1, key="p_foto")
 
@@ -204,10 +207,9 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             f"🥑 Fett: **{vals['fett']}g**"
         )
         
-        # Zurücksetzen der Eingabefelder
-        if "input_gericht" in st.session_state:
-            st.session_state["input_gericht"] = ""
-        st.session_state["cam_id"] = st.session_state.get("cam_id", 0) + 1
+        # Zurücksetzen der Eingabefelder über Key-Rotation (sicher und fehlerfrei)
+        st.session_state.input_key += 1
+        st.session_state.cam_id += 1
         
         st.rerun()
 
