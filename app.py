@@ -268,4 +268,21 @@ if not df_all.empty:
                 )
             with cols[1]:
                 if st.button("🗑️", key=f"hist_del_{e_id}", help="Eintrag löschen"):
-                    st.session_state.e
+                    st.session_state.eintraege = [e for e in st.session_state.eintraege if str(e.get("ID")) != e_id]
+                    speichere_daten(st.session_state.eintraege)
+                    st.rerun()
+            st.divider()
+
+    elif report_typ == "Wochen":
+        df_all["Woche"] = df_all["Datum_dt"].dt.strftime('%Y-W%V')
+        
+        # Tages-Summen berechnen, dann den Wochendurchschnitt pro Tag ermitteln
+        tages_summen = df_all.groupby(["Datum", "Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].sum().reset_index()
+        wochen_agg = tages_summen.groupby(["Woche", "Person"])[["kcal", "protein", "carbs", "fett"]].mean().reset_index()
+        wochen_agg[["kcal", "protein", "carbs", "fett"]] = wochen_agg[["kcal", "protein", "carbs", "fett"]].astype(int)
+        
+        tab_display = wochen_agg.rename(columns={
+            "kcal": "🔥 kcal (Tagesschnitt)",
+            "protein": "🥩 Eiweiß (g)",
+            "carbs": "🍞 Carbs (g)",
+            "fett": "🥑 Fett (g)"
