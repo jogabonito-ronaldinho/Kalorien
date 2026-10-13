@@ -86,7 +86,6 @@ def search_or_estimate_nutrition(query_text, portion_size):
     q = query_text.lower()
     gefundenes_gericht = query_text
     
-    # Intelligente, realistische Richtwerte basierend auf typischen Portionsgrößen (Mittel = 1.0x)
     base_kcal, prot, carbs, fett = 650, 40, 60, 20
     
     if any(k in q for k in ["spätzle", "rindfleisch", "fleisch", "braten", "gulasch", "pizza", "burger", "pasta", "nudeln", "steak", "pommes", "döner", "schnitzel", "schwein"]):
@@ -149,7 +148,6 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
                 base_factor = PORTION_FACTORS.get(portion, 1.0)
                 finaler_gericht_name = "Mahlzeit"
                 
-                # Realistische Portionswerte für ein fotografiertes Hauptgericht
                 vals = {
                     "kcal": int(650 * base_factor),
                     "protein": int(38 * base_factor),
@@ -177,7 +175,6 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
         st.session_state.eintraege.append(neuer_eintrag)
         speichere_daten(st.session_state.eintraege)
         
-        # Grüne Erfolgsmeldung für den nächsten Rerun speichern
         st.session_state.last_success = (
             f"✅ Erfasst für **{person}** ({gericht_bezeichnung} - {portion}):\n\n"
             f"🔥 **{vals['kcal']} kcal** | "
@@ -186,13 +183,11 @@ if st.button("🔍 Nährwerte ermitteln & Eintragen", use_container_width=True):
             f"🥑 Fett: **{vals['fett']}g**"
         )
         
-        # Zurücksetzen der Eingabefelder über Key-Rotation
         st.session_state.input_key += 1
         st.session_state.cam_id += 1
         
         st.rerun()
 
-# Erfolgsmeldung anzeigen
 if st.session_state.last_success:
     st.success(st.session_state.last_success)
     st.session_state.last_success = None
@@ -300,21 +295,18 @@ if not df_all.empty:
         chart_data["Ziel Richi (2200 kcal)"] = USER_GOALS["Richi"]["ziel_kcal"]
         
         df_melted = chart_data.reset_index().melt(id_vars=["Woche"], var_name="Kategorie", value_name="Kalorien")
+        df_melted["Linienart"] = df_melted["Kategorie"].apply(lambda x: "Gestrichelt" if "Ziel" in str(x) else "Durchgezogen")
         
         color_scale = alt.Scale(
             domain=["Mabe", "Richi", "Ziel Mabe (1900 kcal)", "Ziel Richi (2200 kcal)"],
-            range=["#8B0000", "#002B80", "#FF8080", "#80B3FF"] # Mabe Dunkelrot, Richi Dunkelblau, Mabe Ziel transparentes Rot, Richi Ziel transparentes Blau
+            range=["#8B0000", "#002B80", "#FF8080", "#80B3FF"]
         )
         
         c = alt.Chart(df_melted).mark_line(point=True, strokeWidth=3).encode(
             x=alt.X("Woche:N", title="Woche"),
             y=alt.Y("Kalorien:Q", title="Kalorien (kcal)"),
             color=alt.Color("Kategorie:N", scale=color_scale, legend=alt.Legend(title="Legende")),
-            strokeDash=alt.condition(
-                alt.datum.Kategorie.str.contains("Ziel"),
-                alt.value([5, 5]),
-                alt.value([0])
-            )
+            strokeDash=alt.StrokeDash("Linienart:N", scale=alt.Scale(domain=["Durchgezogen", "Gestrichelt"], range=[[0], [5, 5]]), legend=None)
         ).properties(height=300)
         st.altair_chart(c, use_container_width=True)
         
@@ -344,6 +336,7 @@ if not df_all.empty:
         chart_data["Ziel Richi (2200 kcal)"] = USER_GOALS["Richi"]["ziel_kcal"]
         
         df_melted = chart_data.reset_index().melt(id_vars=["Monat"], var_name="Kategorie", value_name="Kalorien")
+        df_melted["Linienart"] = df_melted["Kategorie"].apply(lambda x: "Gestrichelt" if "Ziel" in str(x) else "Durchgezogen")
         
         color_scale = alt.Scale(
             domain=["Mabe", "Richi", "Ziel Mabe (1900 kcal)", "Ziel Richi (2200 kcal)"],
@@ -354,11 +347,7 @@ if not df_all.empty:
             x=alt.X("Monat:N", title="Monat"),
             y=alt.Y("Kalorien:Q", title="Kalorien (kcal)"),
             color=alt.Color("Kategorie:N", scale=color_scale, legend=alt.Legend(title="Legende")),
-            strokeDash=alt.condition(
-                alt.datum.Kategorie.str.contains("Ziel"),
-                alt.value([5, 5]),
-                alt.value([0])
-            )
+            strokeDash=alt.StrokeDash("Linienart:N", scale=alt.Scale(domain=["Durchgezogen", "Gestrichelt"], range=[[0], [5, 5]]), legend=None)
         ).properties(height=300)
         st.altair_chart(c, use_container_width=True)
         
@@ -388,6 +377,7 @@ if not df_all.empty:
         chart_data["Ziel Richi (2200 kcal)"] = USER_GOALS["Richi"]["ziel_kcal"]
         
         df_melted = chart_data.reset_index().melt(id_vars=["Jahr"], var_name="Kategorie", value_name="Kalorien")
+        df_melted["Linienart"] = df_melted["Kategorie"].apply(lambda x: "Gestrichelt" if "Ziel" in str(x) else "Durchgezogen")
         
         color_scale = alt.Scale(
             domain=["Mabe", "Richi", "Ziel Mabe (1900 kcal)", "Ziel Richi (2200 kcal)"],
@@ -398,11 +388,7 @@ if not df_all.empty:
             x=alt.X("Jahr:N", title="Jahr"),
             y=alt.Y("Kalorien:Q", title="Kalorien (kcal)"),
             color=alt.Color("Kategorie:N", scale=color_scale, legend=alt.Legend(title="Legende")),
-            strokeDash=alt.condition(
-                alt.datum.Kategorie.str.contains("Ziel"),
-                alt.value([5, 5]),
-                alt.value([0])
-            )
+            strokeDash=alt.StrokeDash("Linienart:N", scale=alt.Scale(domain=["Durchgezogen", "Gestrichelt"], range=[[0], [5, 5]]), legend=None)
         ).properties(height=300)
         st.altair_chart(c, use_container_width=True)
 else:
